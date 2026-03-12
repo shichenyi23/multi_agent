@@ -1,0 +1,2 @@
+设计一个单端口同步 RAM，参数化地址宽度和数据宽度。接口包含 clk、rst_n、we、addr、din、dout。
+要求写优先，读写延迟都为 1 个周期。请后续自动生成 RTL、testbench，并通过 lint / 仿真 / 综合流程。

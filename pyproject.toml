@@ -1,0 +1,11 @@
+[project]
+name = "llm4eda-multi-agent"
+version = "0.1.0"
+description = "Scaffold for a multi-agent LLM4EDA workflow."
+requires-python = ">=3.11"
+dependencies = []
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+

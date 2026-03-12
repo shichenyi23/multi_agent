@@ -1,0 +1,9 @@
+{
+  "module_name": "ram_sp",
+  "passed": true,
+  "compile_log": "",
+  "run_log": "VCD info: dumpfile wave.vcd opened for output.\nPASS\n/media/scy/661F-C410/windows_linux/multi-agent/artifacts/ram_sp/generated_tb.v:109: $finish called at 116000 (1ps)\n",
+  "failures": [],
+  "suggested_instrumentation": [],
+  "vcd_path": "artifacts/ram_sp/wave.vcd"
+}

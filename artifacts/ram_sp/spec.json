@@ -1,0 +1,68 @@
+{
+  "module_name": "ram_sp",
+  "summary": "Single-port synchronous RAM with write-first semantics.",
+  "ports": [
+    {
+      "name": "clk",
+      "dir": "input",
+      "width": 1
+    },
+    {
+      "name": "rst_n",
+      "dir": "input",
+      "width": 1
+    },
+    {
+      "name": "we",
+      "dir": "input",
+      "width": 1
+    },
+    {
+      "name": "addr",
+      "dir": "input",
+      "width": "ADDR_WIDTH"
+    },
+    {
+      "name": "din",
+      "dir": "input",
+      "width": "DATA_WIDTH"
+    },
+    {
+      "name": "dout",
+      "dir": "output",
+      "width": "DATA_WIDTH"
+    }
+  ],
+  "parameters": [
+    {
+      "name": "ADDR_WIDTH",
+      "default": 8
+    },
+    {
+      "name": "DATA_WIDTH",
+      "default": 32
+    },
+    {
+      "name": "DEPTH",
+      "default": "1 << ADDR_WIDTH"
+    }
+  ],
+  "clock_strategy": "posedge_clk",
+  "reset_strategy": "sync_active_low",
+  "timing_requirements": [
+    "read_latency=1",
+    "write_latency=1"
+  ],
+  "constraints": [
+    "write_priority=true"
+  ],
+  "functional_spec": "Single-port synchronous RAM with write-first behavior.",
+  "test_points": [
+    "reset initializes observable state",
+    "write then read same address returns the new data",
+    "lowest and highest addresses are both accessible",
+    "back-to-back writes to different addresses are preserved"
+  ],
+  "submodules": []
+}
+

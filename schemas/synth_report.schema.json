@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SynthesisReport",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "module_name",
+    "passed",
+    "strategy"
+  ],
+  "properties": {
+    "module_name": {
+      "type": "string"
+    },
+    "passed": {
+      "type": "boolean"
+    },
+    "strategy": {
+      "type": "string",
+      "enum": [
+        "area",
+        "timing"
+      ]
+    },
+    "cell_count": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "critical_path_ns": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "suggestions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "raw_log": {
+      "type": "string"
+    }
+  }
+}
+

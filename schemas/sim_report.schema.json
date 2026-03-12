@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SimulationReport",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "module_name",
+    "passed"
+  ],
+  "properties": {
+    "module_name": {
+      "type": "string"
+    },
+    "passed": {
+      "type": "boolean"
+    },
+    "compile_log": {
+      "type": "string"
+    },
+    "run_log": {
+      "type": "string"
+    },
+    "failures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "category",
+          "message"
+        ],
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "time_ps": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "signal_hints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "suggested_instrumentation": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "vcd_path": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}
+

@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ModuleSpec",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "module_name",
+    "ports",
+    "functional_spec"
+  ],
+  "properties": {
+    "module_name": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "ports": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "dir",
+          "width"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "dir": {
+            "type": "string",
+            "enum": [
+              "input",
+              "output",
+              "inout"
+            ]
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "signed": {
+            "type": "boolean"
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "parameters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "default"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "default": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "clock_strategy": {
+      "type": "string"
+    },
+    "reset_strategy": {
+      "type": "string"
+    },
+    "timing_requirements": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "constraints": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "functional_spec": {
+      "type": "string"
+    },
+    "test_points": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "submodules": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
+
