@@ -32,7 +32,9 @@ module ram_sp_tb;
     clk = 1'b0;
   end
 
+  /* verilator lint_off BLKSEQ */
   always #5 clk = ~clk;
+  /* verilator lint_on BLKSEQ */
 
   task automatic expect_eq(
     input [DATA_WIDTH-1:0] expected,

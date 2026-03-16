@@ -19,9 +19,11 @@ module ram_sp #(
   always @(posedge clk) begin
     if (!rst_n) begin
       dout <= {DATA_WIDTH{1'b0}};
+      /* verilator lint_off BLKSEQ */
       for (idx = 0; idx < DEPTH; idx = idx + 1) begin
-        mem[idx] <= {DATA_WIDTH{1'b0}};
+        mem[idx] = {DATA_WIDTH{1'b0}};
       end
+      /* verilator lint_on BLKSEQ */
     end else if (we) begin
       mem[addr] <= din;
       dout <= din;
