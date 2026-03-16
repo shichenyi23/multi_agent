@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from agents.base import BaseAgent
@@ -76,7 +77,9 @@ class TestbenchAgent(BaseAgent):
                 if previous_source is not None and sim_feedback is not None
                 else build_tb_generation_request(spec, rtl_source)
             )
+            logging.info(f"[TB] 发送Prompt到LLM:\n{request.user_prompt}")
             response = self.backend.generate(request)
+            logging.info(f"[TB] 收到LLM响应, 长度: {len(response) if response else 0}")
             if response:
                 return extract_code_block(response)
         return self.render_testbench(spec)

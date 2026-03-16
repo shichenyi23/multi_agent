@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from agents.base import BaseAgent
@@ -24,7 +25,10 @@ class SpecAnalystAgent(BaseAgent):
     ) -> dict[str, Any] | None:
         if self.backend is None:
             return None
-        response = self.backend.generate(build_spec_request(request_text, module_name_hint))
+        request = build_spec_request(request_text, module_name_hint)
+        logging.info(f"[Spec] 发送Prompt到LLM:\n{request.user_prompt}")
+        response = self.backend.generate(request)
+        logging.info(f"[Spec] 收到LLM响应, 长度: {len(response) if response else 0}")
         if response is None:
             return None
         return extract_json_object(response)

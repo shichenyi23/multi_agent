@@ -2,9 +2,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 from pathlib import Path
 
 from workflow.state_machine import WorkflowOrchestrator
+
+# Configure logging for command-line usage
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 
 def summarize_state(state) -> dict:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from agents.rtl_coder import RTLCoderAgent
@@ -35,6 +36,7 @@ class WorkflowOrchestrator:
         strategy: str = "area",
         liberty_path: Path | None = None,
     ) -> WorkflowState:
+        logging.info(f"开始处理模块: {module_dir.name}")
         store = ArtifactStore(module_dir)
         draft = self._load_or_infer_spec(store)
         spec, clarifications = self.spec_agent.analyze(draft)
@@ -42,34 +44,42 @@ class WorkflowOrchestrator:
         module_name = draft.get("module_name", module_dir.name)
         state = WorkflowState(module_name=module_name, stage=Stage.INTAKE)
         state.clarifications = clarifications
+        logging.info(f"规格分析完成: {module_name}")
 
         if any(item.severity == Severity.REQUIRED for item in clarifications):
             state.stage = Stage.NEEDS_CLARIFICATION
             store.save_json(store.clarifications_path, {"clarifications": [item.to_dict() for item in clarifications]})
             store.save_json(store.workflow_state_path, state.to_dict())
+            logging.warning(f"需要澄清: {[c.field for c in clarifications]}")
             return state
 
         state.stage = Stage.SPEC_READY
         store.save_json(store.clarifications_path, {"clarifications": [item.to_dict() for item in clarifications]})
 
+        logging.info("开始生成RTL...")
         rtl = self._ensure_rtl_ready(spec, store, state)
         state.current_rtl = rtl
         state.stage = Stage.RTL_READY
         store.save_json(store.rtl_meta_path, rtl.to_dict())
+        logging.info(f"RTL生成完成, lint: {rtl.lint.success if rtl.lint else 'N/A'}")
         if rtl.lint is not None and not rtl.lint.success:
             state.stage = Stage.FAILED
             state.notes.append("RTL lint did not converge within the configured retry budget.")
             store.save_json(store.workflow_state_path, state.to_dict())
+            logging.error("RTL lint失败")
             return state
 
+        logging.info("开始生成Testbench...")
         tb = self._ensure_tb_ready(spec, store, state)
         state.current_tb = tb
         state.stage = Stage.TB_READY
         store.save_json(store.tb_meta_path, tb.to_dict())
+        logging.info(f"Testbench生成完成, lint: {tb.lint.success if tb.lint else 'N/A'}")
         if tb.lint is not None and not tb.lint.success:
             state.stage = Stage.FAILED
             state.notes.append("TB lint did not converge within the configured retry budget.")
             store.save_json(store.workflow_state_path, state.to_dict())
+            logging.error("TB lint失败")
             return state
 
         if generate_only:
@@ -77,29 +87,36 @@ class WorkflowOrchestrator:
             store.save_json(store.workflow_state_path, state.to_dict())
             return state
 
+        logging.info("开始仿真...")
         sim_report, rtl, tb = self._run_simulation_loop(spec, store, state, rtl, tb)
         state.sim_report = sim_report
         state.current_rtl = rtl
         state.current_tb = tb
+        logging.info(f"仿真完成, passed: {sim_report.passed}")
         if not sim_report.passed:
             state.stage = Stage.FAILED
             state.notes.append("Simulation did not pass. Inspect sim.json for structured failures.")
             store.save_json(store.workflow_state_path, state.to_dict())
+            logging.error(f"仿真失败: {len(sim_report.failures)} failures")
             return state
 
         state.stage = Stage.SIM_PASSED
 
+        logging.info("开始综合...")
         synth_report = self.synth_agent.run(spec, rtl, strategy=strategy, liberty_path=liberty_path)
         state.synth_report = synth_report
         state.attempts["synth"] = state.attempts.get("synth", 0) + 1
         store.save_json(store.synth_path, synth_report.to_dict())
+        logging.info(f"综合完成, passed: {synth_report.passed}, cells: {synth_report.cell_count}")
         if not synth_report.passed:
             state.stage = Stage.FAILED
             state.notes.append("Synthesis did not pass. Inspect synth.json for structured warnings and suggestions.")
             store.save_json(store.workflow_state_path, state.to_dict())
+            logging.error("综合失败")
             return state
 
         state.stage = Stage.DONE
+        logging.info(f"全部完成! 模块: {module_name}, 单元数: {synth_report.cell_count}")
         store.save_json(store.workflow_state_path, state.to_dict())
         return state
 

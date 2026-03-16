@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from agents.base import BaseAgent
@@ -85,7 +86,9 @@ class RTLCoderAgent(BaseAgent):
                 if previous_source is not None
                 else build_rtl_generation_request(spec)
             )
+            logging.info(f"[RTL] 发送Prompt到LLM:\n{request.user_prompt}")
             response = self.backend.generate(request)
+            logging.info(f"[RTL] 收到LLM响应, 长度: {len(response) if response else 0}")
             if response:
                 return extract_code_block(response)
         return self.render_module(spec)

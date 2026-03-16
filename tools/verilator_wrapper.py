@@ -11,8 +11,11 @@ def lint_verilog(
     source_files: list[Path],
     top_module: str | None = None,
     cwd: Path | None = None,
+    timing: bool = True,
 ) -> LintResult:
     command = ["verilator", "--lint-only", "-Wall"]
+    if timing:
+        command.append("--timing")
     if top_module:
         command.extend(["--top-module", top_module])
     command.extend(str(path.resolve()) for path in source_files)
