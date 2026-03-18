@@ -28,7 +28,7 @@ class SpecAnalystAgent(BaseAgent):
         request = build_spec_request(request_text, module_name_hint)
         logging.info(f"[Spec] 发送Prompt到LLM:\n{request.user_prompt}")
         response = self.backend.generate(request)
-        logging.info(f"[Spec] 收到LLM响应, 长度: {len(response) if response else 0}")
+        logging.info(f"[Spec] 收到LLM响应, 长度: {len(response) if response else 0}\n{response if response else 'None'}")
         if response is None:
             return None
         return extract_json_object(response)
@@ -82,7 +82,8 @@ class SpecAnalystAgent(BaseAgent):
 
         ports = draft.get("ports", [])
         for index, port in enumerate(ports):
-            if "name" not in port or "dir" not in port:
+            # Support both "dir" and "direction" field names
+            if "name" not in port or ("dir" not in port and "direction" not in port):
                 items.append(
                     ClarificationRequest(
                         field=f"ports[{index}]",
@@ -138,9 +139,11 @@ class SpecAnalystAgent(BaseAgent):
 
     @staticmethod
     def _parse_port(data: dict[str, Any]) -> PortSpec:
+        # Support both "dir" and "direction" field names
+        port_dir = data.get("dir") or data.get("direction", "")
         return PortSpec(
             name=data["name"],
-            dir=data["dir"],
+            dir=port_dir,
             width=data.get("width", 1),
             signed=bool(data.get("signed", False)),
             description=data.get("description", ""),
@@ -148,8 +151,10 @@ class SpecAnalystAgent(BaseAgent):
 
     @staticmethod
     def _parse_parameter(data: dict[str, Any]) -> ParameterSpec:
+        # Support both "default" and "value" field names
+        default_val = data.get("default") if "default" in data else data.get("value", 0)
         return ParameterSpec(
             name=data["name"],
-            default=data["default"],
+            default=default_val,
             description=data.get("description", ""),
         )

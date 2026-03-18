@@ -46,6 +46,7 @@ class OpenAICompatibleBackend:
     name: str = "openai-compatible"
 
     def generate(self, request: PromptRequest) -> str | None:
+        import logging
         payload = {
             "model": self.model,
             "messages": [
@@ -67,11 +68,33 @@ class OpenAICompatibleBackend:
         try:
             with urllib.request.urlopen(http_request, timeout=120) as response:
                 body = json.loads(response.read().decode("utf-8"))
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode("utf-8") if e.fp else ""
+            logging.error(f"API HTTP错误 {e.code}: {e.reason}")
+            logging.error(f"API错误详情: {error_body}")
+            return None
+        except urllib.error.URLError as e:
+            logging.error(f"API连接错误: {e.reason}")
+            return None
+        except TimeoutError:
+            logging.error("API请求超时")
+            return None
+        except json.JSONDecodeError as e:
+            logging.error(f"API响应JSON解析错误: {e}")
+            return None
+        except Exception as e:
+            logging.error(f"API未知错误: {type(e).__name__}: {e}")
+            return None
+
+        # Check for API-level errors in response
+        if "error" in body:
+            error_info = body["error"]
+            logging.error(f"API返回错误: {error_info}")
             return None
 
         choices = body.get("choices", [])
         if not choices:
+            logging.warning("API返回空的choices")
             return None
         message = choices[0].get("message", {})
         content = message.get("content")
@@ -98,24 +121,32 @@ class RuleBasedBackend:
         return None
 
     def _generate_spec_from_request(self, metadata: dict[str, Any]) -> str | None:
+        import re
         request_text = str(metadata.get("request_text", ""))
         normalized = request_text.lower()
         module_name = metadata.get("module_name_hint") or "user_module"
 
-        # Detect module type
-        if "ram" in normalized or "memory" in normalized:
-            return self._generate_ram_spec(module_name, request_text)
-        elif "counter" in normalized:
+        # Detect module type using word boundaries to avoid substring issues
+        # e.g., "counter" contains "ram" as substring, so we need exact match
+        has_counter = bool(re.search(r'\bcounter\b', normalized))
+        has_ram = bool(re.search(r'\b(ram|memory)\b', normalized))
+        has_fifo = bool(re.search(r'\bfifo\b', normalized))
+        has_adder = bool(re.search(r'\b(adder|add)\b', normalized))
+        has_mux = bool(re.search(r'\b(mux|multiplexer)\b', normalized))
+
+        if has_counter:
             return self._generate_counter_spec(module_name, request_text)
-        elif "fifo" in normalized:
+        elif has_ram:
+            return self._generate_ram_spec(module_name, request_text)
+        elif has_fifo:
             return self._generate_fifo_spec(module_name, request_text)
-        elif "adder" in normalized or "add" in normalized:
+        elif has_adder:
             return self._generate_adder_spec(module_name, request_text)
-        elif "mux" in normalized or "multiplexer" in normalized:
+        elif has_mux:
             return self._generate_mux_spec(module_name, request_text)
         else:
-            # Default to RAM for backward compatibility
-            return self._generate_ram_spec(module_name, request_text)
+            # Default to counter for backward compatibility
+            return self._generate_counter_spec(module_name, request_text)
 
     def _generate_ram_spec(self, module_name: str, request_text: str) -> str:
         spec = {
@@ -353,6 +384,7 @@ class RuleBasedBackend:
         width = self._param_default(spec, "WIDTH", 8)
         reset_name = self._find_reset_name(spec) or "rst_n"
         has_en = any(p.name == "en" for p in spec.ports)
+        has_overflow = any(p.name == "overflow" for p in spec.ports)
 
         reset_cond = f"!{reset_name}" if "low" in spec.reset_strategy else reset_name
 
@@ -369,27 +401,62 @@ class RuleBasedBackend:
         if has_en:
             lines.append("  input  wire       en,")
 
-        lines.extend([
-            f"  output reg  [WIDTH-1:0] count",
-            ");",
-            "",
-            "  always @(posedge clk) begin",
-            f"    if ({reset_cond}) begin",
-            f"      count <= {width}'b0;",
-        ])
-
-        if has_en:
+        if has_overflow:
             lines.extend([
-            "    end else if (en) begin",
-            "      count <= count + 1'b1;",
-            "    end",
+                f"  output reg  [WIDTH-1:0] count,",
+                "  output reg        overflow",
+                ");",
+                "",
+                "  always @(posedge clk) begin",
+                f"    if ({reset_cond}) begin",
+                f"      count <= {width}'b0;",
+                "      overflow <= 1'b0;",
             ])
+            if has_en:
+                lines.extend([
+                "    end else if (en) begin",
+                "      if (count == {WIDTH{1'b1}}) begin",
+                "        count <= {WIDTH{1'b0}};",
+                "        overflow <= 1'b1;",
+                "      end else begin",
+                "        count <= count + 1'b1;",
+                "        overflow <= 1'b0;",
+                "      end",
+                "    end",
+                ])
+            else:
+                lines.extend([
+                "    end else begin",
+                "      if (count == {WIDTH{1'b1}}) begin",
+                "        count <= {WIDTH{1'b0}};",
+                "        overflow <= 1'b1;",
+                "      end else begin",
+                "        count <= count + 1'b1;",
+                "        overflow <= 1'b0;",
+                "      end",
+                "    end",
+                ])
         else:
             lines.extend([
-            "    end else begin",
-            "      count <= count + 1'b1;",
-            "    end",
+                f"  output reg  [WIDTH-1:0] count",
+                ");",
+                "",
+                "  always @(posedge clk) begin",
+                f"    if ({reset_cond}) begin",
+                f"      count <= {width}'b0;",
             ])
+            if has_en:
+                lines.extend([
+                "    end else if (en) begin",
+                "      count <= count + 1'b1;",
+                "    end",
+                ])
+            else:
+                lines.extend([
+                "    end else begin",
+                "      count <= count + 1'b1;",
+                "    end",
+                ])
 
         lines.extend([
             "  end",
@@ -596,10 +663,12 @@ class RuleBasedBackend:
         reset_active = "1'b0" if "low" in spec.reset_strategy else "1'b1"
         reset_inactive = "1'b1" if reset_active == "1'b0" else "1'b0"
         has_en = any(p.name == "en" for p in spec.ports)
+        has_overflow = any(p.name == "overflow" for p in spec.ports)
 
         lines = [
             "`timescale 1ns/1ps",
             "/* verilator lint_off DECLFILENAME */",
+            "/* verilator lint_off UNUSEDSIGNAL */",
             f"module {spec.module_name}_tb;",
             "",
             f"  localparam WIDTH = {width};",
@@ -611,10 +680,20 @@ class RuleBasedBackend:
         if has_en:
             lines.append("  reg en;")
 
+        if has_overflow:
+            lines.extend([
+                f"  wire [WIDTH-1:0] count;",
+                "  wire overflow;",
+            ])
+        else:
+            lines.extend([
+                f"  wire [WIDTH-1:0] count;",
+            ])
+
         lines.extend([
-            f"  wire [WIDTH-1:0] count;",
             "",
             "  integer error_count;",
+            "  /* verilator lint_on UNUSEDSIGNAL */",
             "",
             f"  {spec.module_name} #(",
             f"    .WIDTH(WIDTH)",
@@ -626,9 +705,19 @@ class RuleBasedBackend:
         if has_en:
             lines.append("    .en(en),")
 
+        if has_overflow:
+            lines.extend([
+                "    .count(count),",
+                "    .overflow(overflow)",
+                "  );",
+            ])
+        else:
+            lines.extend([
+                "    .count(count)",
+                "  );",
+            ])
+
         lines.extend([
-            "    .count(count)",
-            "  );",
             "",
             "  initial begin",
             "    clk = 1'b0;",

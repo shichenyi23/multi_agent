@@ -8,18 +8,65 @@ from llm.backends import PromptRequest
 
 
 def build_spec_request(request_text: str, module_name_hint: str | None = None) -> PromptRequest:
+    system_prompt = """You are a specification analyst for RTL design.
+Your job is to convert user natural language descriptions into a strict JSON design contract.
+This contract will be the single source of truth for RTL generation, verification, and debugging.
+
+IMPORTANT REQUIREMENTS:
+1. Extract ALL ports explicitly - every signal must have name, direction (input/output), and width
+2. Define clock strategy explicitly - which edge (posedge/negedge) samples data
+3. Define reset strategy explicitly - polarity (active_high/active_low), synchronization (sync/async)
+4. For sequential logic, specify output delay expectations
+5. Infer test points from the functional description
+6. Always include width for ports (default to 1 if single bit)
+7. Use "dir" field (not "direction") for port direction
+8. Use "default" field for parameters
+
+Output ONLY valid JSON, no explanation."""
+    user_prompt = f"""Convert this user request into a JSON design contract with these EXACT fields:
+
+{{
+  "module_name": "string - must be valid Verilog identifier",
+  "summary": "string - one line description",
+  "ports": [
+    {{
+      "name": "string - valid Verilog identifier",
+      "dir": "input OR output",
+      "width": number or string (parameter name),
+      "signed": boolean,
+      "description": "string"
+    }}
+  ],
+  "parameters": [
+    {{
+      "name": "string",
+      "default": number or expression,
+      "description": "string"
+    }}
+  ],
+  "clock_strategy": "posedge_clk OR negedge_clk OR combinational",
+  "reset_strategy": "sync_active_high OR sync_active_low OR async_active_high OR async_active_low OR none",
+  "timing_requirements": ["list of timing constraints"],
+  "constraints": ["list of design constraints"],
+  "functional_spec": "string - cycle-accurate behavior description",
+  "test_points": ["list of test objectives"],
+  "submodules": []
+}}
+
+Analyze the request and infer missing information:
+- Clock: if not specified, assume posedge_clk for sequential logic
+- Reset: if not specified, assume sync_active_low for sequential logic with registers
+- Port directions: infer from signal name (clk, rst, en, we -> input; dout, q, valid -> output)
+- Widths: infer from context (8-bit -> 8, 32-bit -> 32)
+
+Request:
+{request_text}
+
+Output ONLY the JSON, no markdown fences, no explanation."""
     return PromptRequest(
         kind="spec_from_request",
-        system_prompt=(
-            "You are a specification analyst for RTL design. "
-            "Convert the user request into strict JSON only."
-        ),
-        user_prompt=(
-            "Return a JSON object with fields: module_name, summary, ports, parameters, "
-            "clock_strategy, reset_strategy, timing_requirements, constraints, "
-            "functional_spec, test_points, submodules.\n\n"
-            f"Request:\n{request_text}"
-        ),
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
         metadata={"request_text": request_text, "module_name_hint": module_name_hint},
     )
 

@@ -39,6 +39,11 @@ class WorkflowOrchestrator:
         logging.info(f"开始处理模块: {module_dir.name}")
         store = ArtifactStore(module_dir)
         draft = self._load_or_infer_spec(store)
+
+        # Auto-fix common spec issues before analysis
+        draft = self._auto_fix_spec(draft)
+        store.save_json(store.spec_path, draft)
+
         spec, clarifications = self.spec_agent.analyze(draft)
 
         module_name = draft.get("module_name", module_dir.name)
@@ -46,12 +51,39 @@ class WorkflowOrchestrator:
         state.clarifications = clarifications
         logging.info(f"规格分析完成: {module_name}")
 
+        # Auto-fix clarifications if possible, instead of stopping
         if any(item.severity == Severity.REQUIRED for item in clarifications):
-            state.stage = Stage.NEEDS_CLARIFICATION
-            store.save_json(store.clarifications_path, {"clarifications": [item.to_dict() for item in clarifications]})
-            store.save_json(store.workflow_state_path, state.to_dict())
-            logging.warning(f"需要澄清: {[c.field for c in clarifications]}")
-            return state
+            fixed_draft, fixed = self._try_fix_clarifications(draft, clarifications)
+            if fixed:
+                logging.info("自动修复了规格问题")
+                draft = fixed_draft
+                store.save_json(store.spec_path, draft)
+                spec, clarifications = self.spec_agent.analyze(draft)
+                state.clarifications = clarifications
+
+        # If still have REQUIRED clarifications, try one more time with repair
+        if any(item.severity == Severity.REQUIRED for item in clarifications):
+            # Try to regenerate spec with clarification feedback
+            if self.spec_agent.backend is not None:
+                logging.info("尝试重新生成规格...")
+                from llm.prompts import build_spec_request
+                request = build_spec_request(store.load_request(), module_name_hint=module_name)
+                response = self.spec_agent.backend.generate(request)
+                if response:
+                    import json
+                    from llm.parsing import extract_json_object
+                    new_draft = extract_json_object(response)
+                    if new_draft:
+                        new_draft = self._auto_fix_spec(new_draft)
+                        store.save_json(store.spec_path, new_draft)
+                        spec, clarifications = self.spec_agent.analyze(new_draft)
+                        state.clarifications = clarifications
+
+        # Final check - if still has REQUIRED clarifications, proceed with best effort
+        if any(item.severity == Severity.REQUIRED for item in clarifications):
+            # Log warning but try to continue with partial spec
+            logging.warning(f"仍有澄清未解决: {[c.field for c in clarifications]}, 尝试继续...")
+            state.notes.append(f"未解决的澄清: {[c.field for c in clarifications]}")
 
         state.stage = Stage.SPEC_READY
         store.save_json(store.clarifications_path, {"clarifications": [item.to_dict() for item in clarifications]})
@@ -234,6 +266,80 @@ class WorkflowOrchestrator:
         if "TB_INCOMPLETE" in sim_report.run_log:
             return True
         return any("testbench" in failure.message.lower() for failure in sim_report.failures)
+
+    @staticmethod
+    def _auto_fix_spec(draft: dict) -> dict:
+        """Automatically fix common spec issues."""
+        import copy
+        draft = copy.deepcopy(draft)
+
+        # Fix ports: ensure all ports have 'dir' field
+        ports = draft.get("ports", [])
+        for port in ports:
+            # Handle both "direction" and missing direction
+            if "direction" in port and "dir" not in port:
+                port["dir"] = port.pop("direction")
+            # Try to infer direction from name
+            if "dir" not in port or not port.get("dir"):
+                name = port.get("name", "").lower()
+                if name in ["clk", "clock", "rst", "rst_n", "reset", "en", "enable", "we", "wr_en", "rd_en"]:
+                    port["dir"] = "input"
+                elif name in ["dout", "data_out", "q", "out", "full", "empty", "cout", "valid"]:
+                    port["dir"] = "output"
+                else:
+                    # Default to input for unknown ports
+                    port["dir"] = "input"
+
+            # Ensure width exists, default to 1
+            if "width" not in port:
+                port["width"] = 1
+
+        # Fix parameters: ensure all have 'default' field
+        params = draft.get("parameters", [])
+        for param in params:
+            if "default" not in param and "value" in param:
+                param["default"] = param.pop("value")
+            elif "default" not in param:
+                param["default"] = 0
+
+        return draft
+
+    def _try_fix_clarifications(self, draft: dict, clarifications: list) -> tuple[dict, bool]:
+        """Try to automatically fix clarifications."""
+        import copy
+        draft = copy.deepcopy(draft)
+
+        fixed = False
+        for cl in clarifications:
+            if cl.severity != Severity.REQUIRED:
+                continue
+
+            field = cl.field
+            # Handle ports[index] format
+            if field.startswith("ports[") and field.endswith("]"):
+                try:
+                    idx = int(field[6:-1])
+                    if 0 <= idx < len(draft.get("ports", [])):
+                        port = draft["ports"][idx]
+                        # Try to infer missing fields
+                        if "name" not in port or not port.get("name"):
+                            # Generate a name based on index
+                            port_names = ["clk", "rst_n", "en", "data", "addr", "dout", "we", "wr_en", "rd_en"]
+                            port["name"] = port_names[idx] if idx < len(port_names) else f"signal_{idx}"
+                        if "dir" not in port:
+                            name = port.get("name", "").lower()
+                            if name in ["clk", "clock", "rst", "rst_n", "reset", "en", "we"]:
+                                port["dir"] = "input"
+                            else:
+                                port["dir"] = "output"
+                        if "width" not in port:
+                            port["width"] = 1
+                        fixed = True
+                        logging.info(f"自动修复端口 {idx}: {port.get('name')}")
+                except (ValueError, IndexError):
+                    pass
+
+        return draft, fixed
 
     @staticmethod
     def _lint_to_sim_feedback(module_name: str, lint_result) -> SimulationReport:

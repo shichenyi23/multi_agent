@@ -88,7 +88,7 @@ class RTLCoderAgent(BaseAgent):
             )
             logging.info(f"[RTL] 发送Prompt到LLM:\n{request.user_prompt}")
             response = self.backend.generate(request)
-            logging.info(f"[RTL] 收到LLM响应, 长度: {len(response) if response else 0}")
+            logging.info(f"[RTL] 收到LLM响应, 长度: {len(response) if response else 0}\n{response if response else 'None'}")
             if response:
                 return extract_code_block(response)
         return self.render_module(spec)

@@ -11,7 +11,12 @@ from pathlib import Path
 
 # Add project root to path
 import sys
-sys.path.insert(0, str(Path(__file__).parent))
+ROOT_DIR = Path(__file__).parent.resolve()
+sys.path.insert(0, str(ROOT_DIR))
+
+# Use absolute paths for artifacts and logs
+ARTIFACTS_DIR = ROOT_DIR / "artifacts"
+LOGS_DIR = ROOT_DIR / "logs"
 
 from workflow.state_machine import WorkflowOrchestrator
 from workflow.artifact_store import ArtifactStore
@@ -30,14 +35,13 @@ st.sidebar.title("⚙️ 配置")
 # Log viewer in sidebar
 st.sidebar.markdown("---")
 st.sidebar.subheader("📋 日志")
-logs_dir = Path("logs")
-if logs_dir.exists():
-    history_file = logs_dir / "history.txt"
+if LOGS_DIR.exists():
+    history_file = LOGS_DIR / "history.txt"
     if history_file.exists():
         history = history_file.read_text(encoding="utf-8")
         st.sidebar.text_area("运行历史", history, height=200, key="history_view")
 
-    log_files = sorted(logs_dir.glob("*.log"), key=lambda x: x.stat().st_mtime, reverse=True)
+    log_files = sorted(LOGS_DIR.glob("*.log"), key=lambda x: x.stat().st_mtime, reverse=True)
     if log_files:
         latest_log = log_files[0]
         log_content = latest_log.read_text(encoding="utf-8")
@@ -103,13 +107,12 @@ if st.button("🚀 生成模块", type="primary", disabled=not user_input):
     # Create unique module directory
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     module_name = f"user_{timestamp}"
-    module_dir = Path("artifacts") / module_name
+    module_dir = ARTIFACTS_DIR / module_name
     module_dir.mkdir(parents=True, exist_ok=True)
 
     # Setup logging
-    logs_dir = Path("logs")
-    logs_dir.mkdir(exist_ok=True)
-    log_file = logs_dir / f"{timestamp}.log"
+    LOGS_DIR.mkdir(exist_ok=True)
+    log_file = LOGS_DIR / f"{timestamp}.log"
 
     # Create log handler
     import logging
@@ -161,7 +164,7 @@ if st.button("🚀 生成模块", type="primary", disabled=not user_input):
         logging.info(f"工作流完成，阶段: {state.stage.value}")
 
         # Write summary to history
-        history_file = logs_dir / "history.txt"
+        history_file = LOGS_DIR / "history.txt"
         with open(history_file, "a", encoding="utf-8") as f:
             f.write(f"[{timestamp}] {module_name}: {state.stage.value} - {user_input[:50]}...\n")
 
@@ -341,9 +344,8 @@ if st.button("🚀 生成模块", type="primary", disabled=not user_input):
 st.divider()
 st.header("📜 历史记录")
 
-artifacts_dir = Path("artifacts")
-if artifacts_dir.exists():
-    modules = sorted([d for d in artifacts_dir.iterdir() if d.is_dir()], key=lambda x: x.stat().st_mtime, reverse=True)
+if ARTIFACTS_DIR.exists():
+    modules = sorted([d for d in ARTIFACTS_DIR.iterdir() if d.is_dir()], key=lambda x: x.stat().st_mtime, reverse=True)
 
     if modules:
         for module_dir in modules[:10]:  # Show last 10
